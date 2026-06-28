@@ -15,6 +15,10 @@ pub struct YearFraction {
 
 impl YearFraction {
 
+    pub fn from_value(val: f64) -> Self {
+        YearFraction{val}
+    }
+
     pub fn value(&self) -> f64 {
         self.val
     }
@@ -22,7 +26,7 @@ impl YearFraction {
 
 impl<'a, H: HolidayCalendar> DayCount<'a, H> {
 
-    pub fn day_count(&self, start: Date, end: Date) -> i32 {
+    pub fn days(&self, start: Date, end: Date) -> i32 {
         match self {
             DayCount::Actual360 | DayCount::Actual365 => end - start,
             DayCount::Thirty360 => daycount_thirty360(start, end),
@@ -47,7 +51,7 @@ impl<'a, H: HolidayCalendar> DayCount<'a, H> {
 
     pub fn year_fraction(&self, start: Date, end: Date) -> YearFraction {
         YearFraction{
-            val: (self.day_count(start, end) as f64) / ( self.days_per_year() as f64 )
+            val: (self.days(start, end) as f64) / ( self.days_per_year() as f64 )
         }
     }
 }
