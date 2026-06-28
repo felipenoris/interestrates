@@ -9,13 +9,20 @@ pub enum DayCount<'a, H: HolidayCalendar> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct YearFraction {
+pub struct YearFraction {
     val: f64
+}
+
+impl YearFraction {
+
+    pub fn value(&self) -> f64 {
+        self.val
+    }
 }
 
 impl<'a, H: HolidayCalendar> DayCount<'a, H> {
 
-    fn day_count(&self, start: Date, end: Date) -> i32 {
+    pub fn day_count(&self, start: Date, end: Date) -> i32 {
         match self {
             DayCount::Actual360 | DayCount::Actual365 => end - start,
             DayCount::Thirty360 => daycount_thirty360(start, end),
@@ -31,14 +38,14 @@ impl<'a, H: HolidayCalendar> DayCount<'a, H> {
         }
     }
 
-    fn advance_days(&self, start: Date, count: i32) -> Date {
+    pub fn advance_days(&self, start: Date, count: i32) -> Date {
         match self {
             DayCount::BDays252(cal) => cal.advance_bdays(start, count),
             _ => start.advance_days(count),
         }
     }
 
-    fn year_fraction(&self, start: Date, end: Date) -> YearFraction {
+    pub fn year_fraction(&self, start: Date, end: Date) -> YearFraction {
         YearFraction{
             val: (self.day_count(start, end) as f64) / ( self.days_per_year() as f64 )
         }

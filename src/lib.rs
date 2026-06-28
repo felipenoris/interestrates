@@ -1,6 +1,7 @@
 use bdays::date::Date;
 
 pub mod daycount;
+pub mod rate;
 
 pub trait IRCurve {
 
