@@ -88,6 +88,7 @@ pub trait Curve {
     }
 }
 
+#[derive(Clone)]
 pub struct CurvePoints<'a> {
     asof: Date,
     daycount: DayCount<'a>,

@@ -1,6 +1,7 @@
 use bdays::date::Date;
 use bdays::HolidayCalendar;
 
+#[derive(Clone, Copy)]
 pub enum DayCount<'a> {
     Actual360,
     Actual365,
