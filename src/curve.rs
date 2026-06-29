@@ -33,6 +33,7 @@ impl error::Error for Error {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CurveMethod {
+    FlatForwardInterpolation,
     LinearInterpolation,
     StepFunction,
 }
@@ -130,6 +131,12 @@ impl<'a> CurvePoints<'a> {
     fn year_fraction(&self, maturity: Date) -> YearFraction {
         self.daycount.year_fraction(self.asof, maturity)
     }
+
+    fn vertex_zero_rate(&self, vertex_index: usize) -> RateYF {
+        let yf = self.daycount.year_fraction_given_days(self.dtm[vertex_index]);
+        let rate = Rate::new(self.compounding, self.zero_rates[vertex_index]);
+        RateYF::new(rate, yf)
+    }
 }
 
 impl<'a> Curve for CurvePoints<'a> {
@@ -141,11 +148,9 @@ impl<'a> Curve for CurvePoints<'a> {
                 // If this curve has only 1 vertice, this will be a flat curve
                 *self.zero_rates.first().unwrap()
             } else {
-
-                let x_out: i32 = self.days_to_maturity(maturity);
-
                 match self.method {
                     CurveMethod::LinearInterpolation => {
+                        let x_out = self.days_to_maturity(maturity);
                         let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
                         linear_interpolation(
@@ -160,8 +165,26 @@ impl<'a> Curve for CurvePoints<'a> {
                         step_function_interpolation(
                             &self.dtm,
                             &self.zero_rates,
-                            x_out,
+                            self.days_to_maturity(maturity),
                         )
+                    },
+                    CurveMethod::FlatForwardInterpolation => {
+                        let x_out = self.days_to_maturity(maturity);
+                        let yf_x_out = self.daycount.year_fraction_given_days(x_out);
+                        let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
+
+                        let rate_yf_a = self.vertex_zero_rate(index_a);
+                        let rate_yf_b = self.vertex_zero_rate(index_b);
+
+                        let ln_px = linear_interpolation(
+                            rate_yf_a.year_fraction().value(),
+                            rate_yf_a.discount().ln(),
+                            rate_yf_b.year_fraction().value(),
+                            rate_yf_b.discount().ln(),
+                            yf_x_out.value(),
+                        );
+
+                        Rate::from_discount(self.compounding, ln_px.exp(), yf_x_out).value()
                     }
                 }
             }
@@ -174,7 +197,12 @@ impl<'a> Curve for CurvePoints<'a> {
     }
 }
 
-fn step_function_interpolation(x: &Vec<i32>, y: &Vec<f64>, x_out: i32) -> f64 {
+fn step_function_interpolation(
+        x: &Vec<i32>,
+        y: &Vec<f64>,
+        x_out: i32,
+    ) -> f64 {
+
     if x_out <= *x.first().unwrap() {
         *y.first().unwrap()
     } else if x_out >= *x.last().unwrap() {
@@ -392,4 +420,43 @@ fn test_step_function_interpolation() {
             0.19,
         );
     }
+}
+
+#[test]
+fn test_flat_forward_interpolation() {
+
+    let vert_x = vec![11, 15, 19, 23];
+    let vert_y = vec![0.10, 0.15, 0.20, 0.19];
+
+    let dt_curve = Date::from_ymd(2015,08,03).unwrap();
+
+    let curve_ac360_cont_ff = CurvePoints::new(
+        dt_curve,
+        DayCount::Actual360,
+        Compounding::Continuous,
+        CurveMethod::FlatForwardInterpolation,
+        vert_x.clone(),
+        vert_y.clone(),
+    ).unwrap();
+
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(9)).value(), 0.05833333333333);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(11)).value(), 0.1);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(13)).value(), 0.128846153846152);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(15)).value(), 0.15);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(19)).value(), 0.2);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(23)).value(), 0.19);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(30)).value(), 0.1789166666666680);
+    assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(16)).value() > 0.15);
+    assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(17)).value() < 0.20);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(15)).value(), 0.2875);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(13)).value(), 0.2875);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).value(), 0.1425);
+    assert_approx_eq(curve_ac360_cont_ff.factor(dt_curve.advance_days(13)), 1.00466361875533);
+    assert_approx_eq(curve_ac360_cont_ff.forward_factor(dt_curve.advance_days(19), dt_curve.advance_days(23)), 1.00158458746737);
+    assert_approx_eq(curve_ac360_cont_ff.discount(dt_curve.advance_days(20)), 0.9891083592630893);
+
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).value(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(51)).value());
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).value(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(100)).value());
+
+    assert_approx_eq(curve_ac360_cont_ff.discount(dt_curve), 1.0);
 }
