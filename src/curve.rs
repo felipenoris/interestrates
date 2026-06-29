@@ -5,6 +5,33 @@ use crate::daycount::YearFraction;
 use crate::rate::{Compounding, Rate, RateYF};
 use crate::daycount::DayCount::{self, BDays252};
 
+use std::error;
+use std::fmt;
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    InvalidCurveDate{
+        asof: Date,
+    },
+
+    Unsorted{
+        dtm: Vec<i32>
+    },
+
+    BadSize{
+        dtm: Vec<i32>,
+        zero_rates: Vec<f64>,
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", *self)
+    }
+}
+
+impl error::Error for Error {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CurveMethod {
     LinearInterpolation,
@@ -61,6 +88,7 @@ struct CurvePoints<'a, H: HolidayCalendar> {
 
 impl<'a, H: HolidayCalendar> CurvePoints<'a, H> {
 
+    /// zero_rate = 0.123 means 12.30%
     pub fn new(
         asof: Date,
         daycount: DayCount<'a, H>,
@@ -68,13 +96,23 @@ impl<'a, H: HolidayCalendar> CurvePoints<'a, H> {
         method: CurveMethod,
         dtm: Vec<i32>,
         zero_rates: Vec<f64>,
-    ) -> Self {
+    ) -> Result<Self, Error> {
 
         if let BDays252(cal) = daycount {
-            assert!(cal.is_bday(asof));
+            if !cal.is_bday(asof) {
+                return Err(Error::InvalidCurveDate{asof});
+            }
         }
 
-        CurvePoints { asof, daycount, compounding, method, dtm, zero_rates }
+        if !dtm.is_sorted() {
+            return Err(Error::Unsorted{dtm: dtm.clone()});
+        }
+
+        if dtm.len() < 2 || dtm.len() != zero_rates.len() {
+            return Err(Error::BadSize{dtm, zero_rates});
+        }
+
+        Ok(CurvePoints { asof, daycount, compounding, method, dtm, zero_rates })
     }
 
     /// panics if maturity occurs before asof date
@@ -213,7 +251,7 @@ fn test_linear_interpolation() {
         CurveMethod::LinearInterpolation,
         vert_x.clone(),
         vert_y.clone(),
-    );
+    ).unwrap();
 
     let maturity_11_days = cal.advance_bdays(dt_curve, 11);
     let maturity_13_days = cal.advance_bdays(dt_curve, 13);
