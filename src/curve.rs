@@ -1,6 +1,5 @@
 use bdays::date::Date;
 use bdays::HolidayCalendar;
-use crate::curve::CurveMethod::LinearInterpolation;
 use crate::daycount::YearFraction;
 use crate::rate::{Compounding, Rate, RateYF};
 use crate::daycount::DayCount::{self, BDays252};
@@ -35,6 +34,7 @@ impl error::Error for Error {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CurveMethod {
     LinearInterpolation,
+    StepFunction,
 }
 
 pub trait Curve {
@@ -73,7 +73,6 @@ pub trait Curve {
             ),
             yf_fwd,
         )
-        
     }
 }
 
@@ -108,7 +107,7 @@ impl<'a, H: HolidayCalendar> CurvePoints<'a, H> {
             return Err(Error::Unsorted{dtm: dtm.clone()});
         }
 
-        if dtm.len() < 2 || dtm.len() != zero_rates.len() {
+        if dtm.is_empty() || dtm.len() != zero_rates.len() {
             return Err(Error::BadSize{dtm, zero_rates});
         }
 
@@ -146,7 +145,7 @@ impl<'a, H: HolidayCalendar> Curve for CurvePoints<'a, H> {
                 let x_out: i32 = self.days_to_maturity(maturity);
 
                 match self.method {
-                    LinearInterpolation => {
+                    CurveMethod::LinearInterpolation => {
                         let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
                         linear_interpolation(
@@ -155,6 +154,13 @@ impl<'a, H: HolidayCalendar> Curve for CurvePoints<'a, H> {
                             self.dtm[index_b] as f64,
                             self.zero_rates[index_b],
                             x_out as f64,
+                        )
+                    },
+                    CurveMethod::StepFunction => {
+                        step_function_interpolation(
+                            &self.dtm,
+                            &self.zero_rates,
+                            x_out,
                         )
                     }
                 }
@@ -165,6 +171,17 @@ impl<'a, H: HolidayCalendar> Curve for CurvePoints<'a, H> {
             Rate::new(self.compounding, result_as_f64),
             self.year_fraction(maturity),
         )
+    }
+}
+
+fn step_function_interpolation(x: &Vec<i32>, y: &Vec<f64>, x_out: i32) -> f64 {
+    if x_out <= *x.first().unwrap() {
+        *y.first().unwrap()
+    } else if x_out >= *x.last().unwrap() {
+        *y.last().unwrap()
+    } else {
+        let pos = x.iter().rposition(|a| *a <= x_out).unwrap();
+        y[pos]
     }
 }
 
@@ -236,7 +253,7 @@ fn assert_approx_eq(a: f64, b: f64) {
 }
 
 #[test]
-fn test_linear_interpolation() {
+fn test_linear_method() {
     let vert_x = vec![11, 15, 19, 23];
     let vert_y = vec![0.10, 0.15, 0.20, 0.19];
 
@@ -301,4 +318,38 @@ fn test_linear_interpolation() {
         curve_b252_ec_lin.zero_rate(maturity_21_days).value(),
         0.195,
     );
+}
+
+#[test]
+fn test_step_function_interpolation() {
+    let vert_x = vec![11, 15, 19, 23];
+    let vert_y = vec![0.10, 0.15, 0.20, 0.19];
+
+    for x in 1..=14 {
+        assert_approx_eq(
+            step_function_interpolation(&vert_x, &vert_y, x),
+            0.10,
+        );
+    }
+
+    for x in 15..=18 {
+        assert_approx_eq(
+            step_function_interpolation(&vert_x, &vert_y, x),
+            0.15,
+        );
+    }
+
+    for x in 19..=22 {
+        assert_approx_eq(
+            step_function_interpolation(&vert_x, &vert_y, x),
+            0.20,
+        );
+    }
+
+    for x in 23..=30 {
+        assert_approx_eq(
+            step_function_interpolation(&vert_x, &vert_y, x),
+            0.19,
+        );
+    }
 }
