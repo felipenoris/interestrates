@@ -177,3 +177,32 @@ fn test_curve_at_curve_date(curve: &dyn Curve) {
         1.0,
     );
 }
+
+#[test]
+fn test_thirty360() {
+    let dc = DayCount::Thirty360;
+
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,28).unwrap()).value(), 0.16666666666666666);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,29).unwrap()).value(), 0.16944444444444445);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 3, 1).unwrap()).value(), 0.175);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,28).unwrap()).value(), 4.166666666666667);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,29).unwrap()).value(), 4.169444444444444);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 3, 1).unwrap()).value(), 4.175);
+
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,28).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08333333333333333);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,29).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08055555555555556);
+
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 3, 1).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.075);
+
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.25);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.2527777777777778);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.2555555555555555);
+
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25);
+
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25);
+}
