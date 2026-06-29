@@ -13,7 +13,7 @@ pub enum Error {
         asof: Date,
     },
 
-    Unsorted{
+    UnsortedOrDuplicates{
         dtm: Vec<i32>
     },
 
@@ -103,8 +103,8 @@ impl<'a> CurvePoints<'a> {
             }
         }
 
-        if !dtm.is_sorted() {
-            return Err(Error::Unsorted{dtm: dtm.clone()});
+        if !dtm.is_sorted() || !dtm.windows(2).all(|w| w[0] != w[1]) {
+            return Err(Error::UnsortedOrDuplicates{dtm: dtm.clone()});
         }
 
         if dtm.is_empty() || dtm.len() != zero_rates.len() {
