@@ -16,7 +16,7 @@ pub struct Rate {
 
 impl Rate {
 
-    pub fn new(
+    pub fn from_annual_rate(
         compounding: Compounding,
         annual_rate: f64,
         year_fraction: YearFraction,
@@ -26,6 +26,18 @@ impl Rate {
             annual_rate,
             year_fraction,
         }
+    }
+
+    pub fn from_annual_rate_pct(
+        compounding: Compounding,
+        annual_rate_pct: f64,
+        year_fraction: YearFraction,
+    ) -> Self {
+        Self::from_annual_rate(
+            compounding,
+            annual_rate_pct / 100.0,
+            year_fraction,
+        )
     }
 
     pub fn from_factor(
@@ -42,7 +54,7 @@ impl Rate {
                 Compounding::Exponential => factor.powf(1.0 / t) - 1.0,
         };
 
-        Self::new(
+        Self::from_annual_rate(
             compounding,
             r,
             year_fraction,

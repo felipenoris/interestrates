@@ -146,7 +146,7 @@ impl<'a> CurvePoints<'a> {
 
     fn vertex_zero_rate(&self, vertex_index: usize) -> Rate {
         let yf = self.daycount.year_fraction_given_days(self.dtm[vertex_index]);
-        Rate::new(self.compounding, self.zero_rates[vertex_index], yf)
+        Rate::from_annual_rate(self.compounding, self.zero_rates[vertex_index], yf)
     }
 }
 
@@ -160,7 +160,7 @@ impl<'a> Curve for CurvePoints<'a> {
 
         if self.method.is_interpolation_method() && self.dtm.len() == 1 {
             // If this curve has only 1 vertex, this will be a flat curve
-            return Rate::new(
+            return Rate::from_annual_rate(
                 self.compounding,
                 *self.zero_rates.first().unwrap(),
                 self.year_fraction(maturity),
@@ -172,7 +172,7 @@ impl<'a> Curve for CurvePoints<'a> {
                 let x_out = self.days_to_maturity(maturity);
                 let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
-                Rate::new(
+                Rate::from_annual_rate(
                     self.compounding,
                     linear_interpolation(
                         self.dtm[index_a] as f64,
@@ -185,7 +185,7 @@ impl<'a> Curve for CurvePoints<'a> {
                 )
             },
             CurveMethod::StepFunction => {
-                Rate::new(
+                Rate::from_annual_rate(
                     self.compounding,
                     step_function_interpolation(
                         &self.dtm,
