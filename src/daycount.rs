@@ -1,11 +1,11 @@
 use bdays::date::Date;
 use bdays::HolidayCalendar;
 
-pub enum DayCount<'a, H: HolidayCalendar> {
+pub enum DayCount<'a> {
     Actual360,
     Actual365,
     Thirty360,
-    BDays252(& 'a H), // BDays252(& 'a dyn HolidayCalendar),
+    BDays252(& 'a dyn HolidayCalendar),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -24,7 +24,7 @@ impl YearFraction {
     }
 }
 
-impl<'a, H: HolidayCalendar> DayCount<'a, H> {
+impl<'a> DayCount<'a> {
 
     pub fn days(&self, start: Date, end: Date) -> i32 {
         match self {

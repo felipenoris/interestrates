@@ -76,21 +76,21 @@ pub trait Curve {
     }
 }
 
-struct CurvePoints<'a, H: HolidayCalendar> {
+struct CurvePoints<'a> {
     asof: Date,
-    daycount: DayCount<'a, H>,
+    daycount: DayCount<'a>,
     compounding: Compounding,
     method: CurveMethod,
     dtm: Vec<i32>,
     zero_rates: Vec<f64>,
 }
 
-impl<'a, H: HolidayCalendar> CurvePoints<'a, H> {
+impl<'a> CurvePoints<'a> {
 
     /// zero_rate = 0.123 means 12.30%
     pub fn new(
         asof: Date,
-        daycount: DayCount<'a, H>,
+        daycount: DayCount<'a>,
         compounding: Compounding,
         method: CurveMethod,
         dtm: Vec<i32>,
@@ -132,7 +132,7 @@ impl<'a, H: HolidayCalendar> CurvePoints<'a, H> {
     }
 }
 
-impl<'a, H: HolidayCalendar> Curve for CurvePoints<'a, H> {
+impl<'a> Curve for CurvePoints<'a> {
 
     fn zero_rate(&self, maturity: Date) -> RateYF {
 
@@ -318,6 +318,46 @@ fn test_linear_method() {
         curve_b252_ec_lin.zero_rate(maturity_21_days).value(),
         0.195,
     );
+}
+
+#[cfg(test)]
+struct ZeroRateResult {
+    maturity: Date,
+    zero_rate: f64,
+    factor: f64,
+    discount: f64,
+}
+
+#[test]
+fn test_linear_actual365() {
+    let dt_curve = Date::from_ymd(2015, 08, 07).unwrap();
+
+    let vert_x = vec![11, 15, 19, 23];
+    let vert_y = vec![0.10, 0.15, 0.20, 0.19];
+
+    let curve_ac365_simple_linear = CurvePoints::new(
+        dt_curve,
+        DayCount::Actual365,
+        Compounding::Simple,
+        CurveMethod::LinearInterpolation,
+        vert_x.clone(),
+        vert_y.clone(),
+    ).unwrap();
+
+    let results = [
+        ZeroRateResult{maturity: Date::from_ymd(2015,08,17).unwrap(), zero_rate: 0.0875, factor: 1.00239726027397, discount: 0.997608472839084},
+        ZeroRateResult{maturity: Date::from_ymd(2015,08,18).unwrap(), zero_rate: 0.1, factor: 1.00301369863014, discount: 0.996995356459984},
+        ZeroRateResult{maturity: Date::from_ymd(2015,08,19).unwrap(), zero_rate: 0.1125, factor: 1.00369863013699, discount: 0.996314999317592},
+        ZeroRateResult{maturity: Date::from_ymd(2015,08,20).unwrap(), zero_rate: 0.1250, factor: 1.00445205479452, discount: 0.995567678145244},
+        ZeroRateResult{maturity: Date::from_ymd(2015,08,21).unwrap(), zero_rate: 0.1375, factor: 1.00527397260274, discount: 0.994753696259454},
+        ZeroRateResult{maturity: Date::from_ymd(2015,08,22).unwrap(), zero_rate: 0.15, factor: 1.00616438356164, discount: 0.993873383253914},
+    ];
+
+    for result in &results {
+        assert_approx_eq(curve_ac365_simple_linear.zero_rate(result.maturity).value(), result.zero_rate);
+        assert_approx_eq(curve_ac365_simple_linear.factor(result.maturity), result.factor);
+        assert_approx_eq(curve_ac365_simple_linear.discount(result.maturity), result.discount);
+    }
 }
 
 #[test]
