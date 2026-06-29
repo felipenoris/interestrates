@@ -1,6 +1,7 @@
 use bdays::date::Date;
+use crate::curve::CurveMethod::{FlatForwardInterpolation, LinearInterpolation, StepFunction};
 use crate::daycount::YearFraction;
-use crate::rate::{Compounding, Rate, RateYF};
+use crate::rate::{Compounding, Rate};
 use crate::daycount::DayCount::{self, BDays252};
 
 use std::error;
@@ -40,9 +41,20 @@ pub enum CurveMethod {
     StepFunction,
 }
 
+impl CurveMethod {
+
+    fn is_interpolation_method(&self) -> bool {
+        match self {
+            FlatForwardInterpolation | LinearInterpolation | StepFunction => true,
+        }
+    }
+}
+
 pub trait Curve {
 
-    fn zero_rate(&self, maturity: Date) -> RateYF;
+    fn asof(&self) -> Date;
+
+    fn zero_rate(&self, maturity: Date) -> Rate;
 
     fn factor(&self, maturity: Date) -> f64 {
         self.zero_rate(maturity).factor()
@@ -60,7 +72,7 @@ pub trait Curve {
         1.0 / self.forward_factor(fwd_date, maturity)
     }
 
-    fn forward_rate(&self, fwd_date: Date, maturity: Date) -> RateYF {
+    fn forward_rate(&self, fwd_date: Date, maturity: Date) -> Rate {
         let zr_yf_start = self.zero_rate(fwd_date);
         let zr_yf_end = self.zero_rate(maturity);
 
@@ -68,12 +80,9 @@ pub trait Curve {
 
         assert!(yf_fwd.value() >= 0.0);
 
-        RateYF::new(
-            Rate::from_factor(
-                zr_yf_start.rate().compounding(),
-                zr_yf_end.factor() / zr_yf_start.factor(),
-                yf_fwd,
-            ),
+        Rate::from_factor(
+            zr_yf_start.compounding(),
+            zr_yf_end.factor() / zr_yf_start.factor(),
             yf_fwd,
         )
     }
@@ -134,68 +143,80 @@ impl<'a> CurvePoints<'a> {
         self.daycount.year_fraction(self.asof, maturity)
     }
 
-    fn vertex_zero_rate(&self, vertex_index: usize) -> RateYF {
+    fn vertex_zero_rate(&self, vertex_index: usize) -> Rate {
         let yf = self.daycount.year_fraction_given_days(self.dtm[vertex_index]);
-        let rate = Rate::new(self.compounding, self.zero_rates[vertex_index]);
-        RateYF::new(rate, yf)
+        Rate::new(self.compounding, self.zero_rates[vertex_index], yf)
     }
 }
 
 impl<'a> Curve for CurvePoints<'a> {
 
-    fn zero_rate(&self, maturity: Date) -> RateYF {
+    fn asof(&self) -> Date {
+        self.asof
+    }
 
-        let result_as_f64: f64 = {
-            if self.dtm.len() == 1 {
-                // If this curve has only 1 vertice, this will be a flat curve
-                *self.zero_rates.first().unwrap()
-            } else {
-                match self.method {
-                    CurveMethod::LinearInterpolation => {
-                        let x_out = self.days_to_maturity(maturity);
-                        let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
+    fn zero_rate(&self, maturity: Date) -> Rate {
 
-                        linear_interpolation(
-                            self.dtm[index_a] as f64,
-                            self.zero_rates[index_a],
-                            self.dtm[index_b] as f64,
-                            self.zero_rates[index_b],
-                            x_out as f64,
-                        )
-                    },
-                    CurveMethod::StepFunction => {
-                        step_function_interpolation(
-                            &self.dtm,
-                            &self.zero_rates,
-                            self.days_to_maturity(maturity),
-                        )
-                    },
-                    CurveMethod::FlatForwardInterpolation => {
-                        let x_out = self.days_to_maturity(maturity);
-                        let yf_x_out = self.daycount.year_fraction_given_days(x_out);
-                        let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
+        if self.method.is_interpolation_method() && self.dtm.len() == 1 {
+            // If this curve has only 1 vertex, this will be a flat curve
+            return Rate::new(
+                self.compounding,
+                *self.zero_rates.first().unwrap(),
+                self.year_fraction(maturity),
+            );
+        }
 
-                        let rate_yf_a = self.vertex_zero_rate(index_a);
-                        let rate_yf_b = self.vertex_zero_rate(index_b);
+        match self.method {
+            CurveMethod::LinearInterpolation => {
+                let x_out = self.days_to_maturity(maturity);
+                let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
-                        let ln_px = linear_interpolation(
-                            rate_yf_a.year_fraction().value(),
-                            rate_yf_a.discount().ln(),
-                            rate_yf_b.year_fraction().value(),
-                            rate_yf_b.discount().ln(),
-                            yf_x_out.value(),
-                        );
+                Rate::new(
+                    self.compounding,
+                    linear_interpolation(
+                        self.dtm[index_a] as f64,
+                        self.zero_rates[index_a],
+                        self.dtm[index_b] as f64,
+                        self.zero_rates[index_b],
+                        x_out as f64,
+                    ),
+                    self.year_fraction(maturity),
+                )
+            },
+            CurveMethod::StepFunction => {
+                Rate::new(
+                    self.compounding,
+                    step_function_interpolation(
+                        &self.dtm,
+                        &self.zero_rates,
+                        self.days_to_maturity(maturity),
+                    ),
+                    self.year_fraction(maturity),
+                )
+            },
+            CurveMethod::FlatForwardInterpolation => {
+                let x_out = self.days_to_maturity(maturity);
+                let yf_x_out = self.daycount.year_fraction_given_days(x_out);
+                let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
-                        Rate::from_discount(self.compounding, ln_px.exp(), yf_x_out).value()
-                    }
-                }
+                let rate_yf_a = self.vertex_zero_rate(index_a);
+                let rate_yf_b = self.vertex_zero_rate(index_b);
+
+                let ln_px = linear_interpolation(
+                    rate_yf_a.year_fraction().value(),
+                    rate_yf_a.discount().ln(),
+                    rate_yf_b.year_fraction().value(),
+                    rate_yf_b.discount().ln(),
+                    yf_x_out.value(),
+                );
+
+                Rate::from_discount(
+                    self.compounding,
+                    ln_px.exp(),
+                    yf_x_out,
+                )
             }
-        };
-
-        RateYF::new(
-            Rate::new(self.compounding, result_as_f64),
-            self.year_fraction(maturity),
-        )
+        }
     }
 }
 

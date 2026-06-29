@@ -10,31 +10,31 @@ pub enum Compounding {
 #[derive(Debug, Clone, Copy)]
 pub struct Rate {
     compounding: Compounding,
-    val: f64, // annual interest rate
+    annual_rate: f64, // annual interest rate, 0.123 means 12.30%
+    year_fraction: YearFraction,
 }
 
-/// Annual interest rate.
 impl Rate {
 
     pub fn new(
         compounding: Compounding,
-        val: f64,
+        annual_rate: f64,
+        year_fraction: YearFraction,
     ) -> Self {
-        Rate {
+        Self {
             compounding,
-            val,
+            annual_rate,
+            year_fraction,
         }
     }
 
-    pub fn from_pct(
+    pub fn from_factor(
         compounding: Compounding,
-        pct: f64,
+        factor: f64,
+        year_fraction: YearFraction,
     ) -> Self {
-        Self::new(compounding, pct / 100.0)
-    }
 
-    pub fn from_factor(compounding: Compounding, factor: f64, yf: YearFraction) -> Self {
-        let t = yf.value();
+        let t = year_fraction.value();
 
         let r = match compounding {
                 Compounding::Continuous => factor.ln() / t,
@@ -42,37 +42,40 @@ impl Rate {
                 Compounding::Exponential => factor.powf(1.0 / t) - 1.0,
         };
 
-        Rate{
-            val: r,
+        Self::new(
             compounding,
-        }
+            r,
+            year_fraction,
+        )
     }
 
-    pub fn from_discount(compounding: Compounding, discount: f64, yf: YearFraction) -> Self {
-        Self::from_factor(compounding, 1.0 / discount, yf)
+    pub fn from_discount(
+        compounding: Compounding,
+        discount: f64,
+        year_fraction: YearFraction,
+    ) -> Self {
+        Self::from_factor(
+            compounding,
+            1.0 / discount,
+            year_fraction,
+        )
     }
 
-    /// 0.10 means 10%
-    pub fn value(&self) -> f64 {
-        self.val
+    pub fn annual_rate(&self) -> f64 {
+        self.annual_rate
     }
 
-    pub fn compounding(&self) -> Compounding {
-        self.compounding
+    pub fn annual_rate_pct(&self) -> f64 {
+        self.annual_rate() * 100.0
     }
 
-    /// 10.25 means 12.25%
-    pub fn value_as_pct(&self) -> f64 {
-        self.val * 100.0
-    }
-
-    pub fn factor(&self, yf: YearFraction) -> f64 {
-        if yf.value() == 0.0 {
+    pub fn factor(&self) -> f64 {
+        if self.year_fraction.value() == 0.0 || self.annual_rate == 0.0 {
             1.0
         } else {
 
-            let r = self.value();
-            let t = yf.value();
+            let r = self.annual_rate;
+            let t = self.year_fraction.value();
 
             match self.compounding {
                 Compounding::Continuous => (r * t).exp(),
@@ -80,38 +83,6 @@ impl Rate {
                 Compounding::Exponential => (1.0 + r).powf(t),
             }
         }
-    }
-
-    pub fn discount(&self, yf: YearFraction) -> f64 {
-        1.0 / self.factor(yf)
-    }
-}
-
-pub struct RateYF {
-    rate: Rate,
-    year_fraction: YearFraction,
-}
-
-impl RateYF {
-
-    pub fn new(rate: Rate, year_fraction: YearFraction) -> Self {
-        Self { rate, year_fraction }
-    }
-
-    pub fn rate(&self) -> Rate {
-        self.rate
-    }
-
-    pub fn value(&self) -> f64 {
-        self.rate.value()
-    }
-
-    pub fn value_as_pct(&self) -> f64 {
-        self.rate.value_as_pct()
-    }
-
-    pub fn factor(&self) -> f64 {
-        self.rate.factor(self.year_fraction)
     }
 
     pub fn discount(&self) -> f64 {
@@ -122,11 +93,15 @@ impl RateYF {
         self.year_fraction
     }
 
-    pub fn effective_rate_value(&self) -> f64 {
+    pub fn compounding(&self) -> Compounding {
+        self.compounding
+    }
+
+    pub fn effective_rate(&self) -> f64 {
         self.factor() - 1.0
     }
 
-    pub fn effective_rate_value_as_pct(&self) -> f64 {
-        self.effective_rate_value() * 100.0
+    pub fn effective_rate_pct(&self) -> f64 {
+        self.effective_rate() * 100.0
     }
 }

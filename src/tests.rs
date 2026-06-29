@@ -32,7 +32,7 @@ fn test_linear_method() {
 
     assert_approx_eq(
         zero_rate_13_days,
-        curve_b252_ec_lin.zero_rate(maturity_13_days).value(),
+        curve_b252_ec_lin.zero_rate(maturity_13_days).annual_rate(),
     );
 
     assert_approx_eq(
@@ -46,29 +46,31 @@ fn test_linear_method() {
     );
 
     assert_approx_eq(
-        curve_b252_ec_lin.zero_rate(maturity_11_days).value(),
+        curve_b252_ec_lin.zero_rate(maturity_11_days).annual_rate(),
         0.10,
     );
 
     assert_approx_eq(
-        curve_b252_ec_lin.zero_rate(cal.advance_bdays(dt_curve, 11-4)).value(),
+        curve_b252_ec_lin.zero_rate(cal.advance_bdays(dt_curve, 11-4)).annual_rate(),
         0.05,
     );
 
     assert_approx_eq(
-        curve_b252_ec_lin.zero_rate(cal.advance_bdays(dt_curve, 23+4)).value(),
+        curve_b252_ec_lin.zero_rate(cal.advance_bdays(dt_curve, 23+4)).annual_rate(),
         0.18,
     );
 
     assert_approx_eq(
-        curve_b252_ec_lin.zero_rate(dt_curve.advance_days(30)).value(),
+        curve_b252_ec_lin.zero_rate(dt_curve.advance_days(30)).annual_rate(),
         0.1925,
     );
 
     assert_approx_eq(
-        curve_b252_ec_lin.zero_rate(maturity_21_days).value(),
+        curve_b252_ec_lin.zero_rate(maturity_21_days).annual_rate(),
         0.195,
     );
+
+    test_curve_at_curve_date(&curve_b252_ec_lin);
 }
 
 struct ZeroRateResult {
@@ -104,10 +106,12 @@ fn test_linear_actual365() {
     ];
 
     for result in &results {
-        assert_approx_eq(curve_ac365_simple_linear.zero_rate(result.maturity).value(), result.zero_rate);
+        assert_approx_eq(curve_ac365_simple_linear.zero_rate(result.maturity).annual_rate(), result.zero_rate);
         assert_approx_eq(curve_ac365_simple_linear.factor(result.maturity), result.factor);
         assert_approx_eq(curve_ac365_simple_linear.discount(result.maturity), result.discount);
     }
+
+    test_curve_at_curve_date(&curve_ac365_simple_linear);
 }
 
 #[test]
@@ -127,24 +131,49 @@ fn test_flat_forward_interpolation() {
         vert_y.clone(),
     ).unwrap();
 
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(9)).value(), 0.05833333333333);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(11)).value(), 0.1);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(13)).value(), 0.128846153846152);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(15)).value(), 0.15);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(19)).value(), 0.2);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(23)).value(), 0.19);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(30)).value(), 0.1789166666666680);
-    assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(16)).value() > 0.15);
-    assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(17)).value() < 0.20);
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(15)).value(), 0.2875);
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(13)).value(), 0.2875);
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).value(), 0.1425);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(9)).annual_rate(), 0.05833333333333);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(11)).annual_rate(), 0.1);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(13)).annual_rate(), 0.128846153846152);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(15)).annual_rate(), 0.15);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(19)).annual_rate(), 0.2);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(23)).annual_rate(), 0.19);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(30)).annual_rate(), 0.1789166666666680);
+    assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(16)).annual_rate() > 0.15);
+    assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(17)).annual_rate() < 0.20);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(15)).annual_rate(), 0.2875);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(13)).annual_rate(), 0.2875);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), 0.1425);
     assert_approx_eq(curve_ac360_cont_ff.factor(dt_curve.advance_days(13)), 1.00466361875533);
     assert_approx_eq(curve_ac360_cont_ff.forward_factor(dt_curve.advance_days(19), dt_curve.advance_days(23)), 1.00158458746737);
     assert_approx_eq(curve_ac360_cont_ff.discount(dt_curve.advance_days(20)), 0.9891083592630893);
 
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).value(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(51)).value());
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).value(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(100)).value());
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(51)).annual_rate());
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(100)).annual_rate());
 
-    assert_approx_eq(curve_ac360_cont_ff.discount(dt_curve), 1.0);
+    test_curve_at_curve_date(&curve_ac360_cont_ff);
+}
+
+fn test_curve_at_curve_date(curve: &dyn Curve) {
+
+    let dt_curve = curve.asof();
+
+    assert_approx_eq(
+        curve.factor(dt_curve),
+        1.0,
+    );
+
+    assert_approx_eq(
+        curve.forward_factor(dt_curve, dt_curve),
+        1.0,
+    );
+
+    assert_approx_eq(
+        curve.discount(dt_curve),
+        1.0,
+    );
+
+    assert_approx_eq(
+        curve.forward_discount(dt_curve, dt_curve),
+        1.0,
+    );
 }
