@@ -1,8 +1,9 @@
 use bdays::date::Date;
-use crate::curve::CurveMethod::{FlatForwardInterpolation, LinearInterpolation, StepFunction};
+use crate::curve::CurveMethod::{CubicSplineOnRates, FlatForwardInterpolation, LinearInterpolation, StepFunction};
 use crate::daycount::YearFraction;
 use crate::rate::{Compounding, Rate};
 use crate::daycount::DayCount::{self, BDays252};
+use crate::spline::{spline_fit, spline_int};
 
 use std::error;
 use std::fmt;
@@ -39,13 +40,21 @@ pub enum CurveMethod {
     FlatForwardInterpolation,
     LinearInterpolation,
     StepFunction,
+    CubicSplineOnRates,
 }
 
 impl CurveMethod {
 
     fn is_interpolation_method(&self) -> bool {
         match self {
-            FlatForwardInterpolation | LinearInterpolation | StepFunction => true,
+            FlatForwardInterpolation | LinearInterpolation | StepFunction | CubicSplineOnRates => true,
+        }
+    }
+
+    fn needs_spline_on_rates(&self) -> bool {
+        match self {
+            CubicSplineOnRates => true,
+            _ => false,
         }
     }
 }
@@ -96,6 +105,7 @@ pub struct CurvePoints<'a> {
     method: CurveMethod,
     dtm: Vec<i32>,
     zero_rates: Vec<f64>,
+    spline_params_opt: Option<Vec<f64>>,
 }
 
 impl<'a> CurvePoints<'a> {
@@ -124,7 +134,15 @@ impl<'a> CurvePoints<'a> {
             return Err(Error::BadSize{dtm, zero_rates});
         }
 
-        Ok(CurvePoints { asof, daycount, compounding, method, dtm, zero_rates })
+        let spline_params_opt = {
+            if method.needs_spline_on_rates() {
+                Option::Some(spline_fit(&dtm, &zero_rates))
+            } else {
+                Option::None
+            }
+        };
+
+        Ok(CurvePoints { asof, daycount, compounding, method, dtm, zero_rates, spline_params_opt })
     }
 
     /// panics if maturity occurs before asof date
@@ -145,7 +163,7 @@ impl<'a> CurvePoints<'a> {
     }
 
     fn vertex_zero_rate(&self, vertex_index: usize) -> Rate {
-        let yf = self.daycount.year_fraction_given_days(self.dtm[vertex_index]);
+        let yf = self.daycount.year_fraction_from_days(self.dtm[vertex_index]);
         Rate::from_annual_rate(self.compounding, self.zero_rates[vertex_index], yf)
     }
 }
@@ -197,7 +215,7 @@ impl<'a> Curve for CurvePoints<'a> {
             },
             CurveMethod::FlatForwardInterpolation => {
                 let x_out = self.days_to_maturity(maturity);
-                let yf_x_out = self.daycount.year_fraction_given_days(x_out);
+                let yf_x_out = self.daycount.year_fraction_from_days(x_out);
                 let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
                 let rate_yf_a = self.vertex_zero_rate(index_a);
@@ -214,6 +232,21 @@ impl<'a> Curve for CurvePoints<'a> {
                 Rate::from_discount(
                     self.compounding,
                     ln_px.exp(),
+                    yf_x_out,
+                )
+            },
+            CurveMethod::CubicSplineOnRates => {
+                let x_out = self.days_to_maturity(maturity);
+                let yf_x_out = self.daycount.year_fraction_from_days(x_out);
+
+                Rate::from_annual_rate(
+                    self.compounding,
+                    spline_int(
+                        &self.dtm,
+                        &self.zero_rates,
+                        self.spline_params_opt.as_ref().unwrap(),
+                        x_out,
+                    ),
                     yf_x_out,
                 )
             }
@@ -241,11 +274,13 @@ fn step_function_interpolation(
 fn test_step_function_interpolation() {
     let vert_x = vec![11, 15, 19, 23];
     let vert_y = vec![0.10, 0.15, 0.20, 0.19];
+    let tol: f64 = 1e-12;
 
     for x in 1..=14 {
         assert_approx_eq(
             step_function_interpolation(&vert_x, &vert_y, x),
             0.10,
+            tol,
         );
     }
 
@@ -253,6 +288,7 @@ fn test_step_function_interpolation() {
         assert_approx_eq(
             step_function_interpolation(&vert_x, &vert_y, x),
             0.15,
+            tol,
         );
     }
 
@@ -260,6 +296,7 @@ fn test_step_function_interpolation() {
         assert_approx_eq(
             step_function_interpolation(&vert_x, &vert_y, x),
             0.20,
+            tol,
         );
     }
 
@@ -267,6 +304,7 @@ fn test_step_function_interpolation() {
         assert_approx_eq(
             step_function_interpolation(&vert_x, &vert_y, x),
             0.19,
+            tol,
         );
     }
 }

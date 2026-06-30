@@ -1,7 +1,20 @@
 use bdays::{HolidayCalendar, date::Date};
-use crate::{daycount::DayCount, rate::Compounding};
+use crate::daycount::{DayCount, YearFraction};
+use crate::rate::{Compounding, Rate};
 use crate::curve::{Curve, CurvePoints, CurveMethod};
 use crate::assert_approx_eq;
+use std::mem::size_of;
+
+#[test]
+fn print_copy_struct_sizes() {
+    println!("Date = {} bytes", size_of::<Date>());
+    println!("DayCount = {} bytes", size_of::<DayCount>());
+    println!("YearFraction = {} bytes", size_of::<YearFraction>());
+    println!("Compounding = {} bytes", size_of::<Compounding>());
+    println!("Rate = {} bytes", size_of::<Rate>());
+}
+
+const TOL: f64 = 1e-12;
 
 #[test]
 fn test_linear_method() {
@@ -33,41 +46,49 @@ fn test_linear_method() {
     assert_approx_eq(
         zero_rate_13_days,
         curve_b252_ec_lin.zero_rate(maturity_13_days).annual_rate(),
+        TOL,
     );
 
     assert_approx_eq(
         disc_13_days,
         curve_b252_ec_lin.discount(maturity_13_days),
+        TOL,
     );
 
     assert_approx_eq(
         curve_b252_ec_lin.discount(maturity_14_days) / curve_b252_ec_lin.discount(maturity_13_days),
         curve_b252_ec_lin.forward_discount(maturity_13_days, maturity_14_days),
+        TOL,
     );
 
     assert_approx_eq(
         curve_b252_ec_lin.zero_rate(maturity_11_days).annual_rate(),
         0.10,
+        TOL,
     );
 
     assert_approx_eq(
         curve_b252_ec_lin.zero_rate(cal.advance_bdays(dt_curve, 11-4)).annual_rate(),
         0.05,
+        TOL,
     );
 
     assert_approx_eq(
         curve_b252_ec_lin.zero_rate(cal.advance_bdays(dt_curve, 23+4)).annual_rate(),
         0.18,
+        TOL,
     );
 
     assert_approx_eq(
         curve_b252_ec_lin.zero_rate(dt_curve.advance_days(30)).annual_rate(),
         0.1925,
+        TOL,
     );
 
     assert_approx_eq(
         curve_b252_ec_lin.zero_rate(maturity_21_days).annual_rate(),
         0.195,
+        TOL,
     );
 
     test_curve_at_curve_date(&curve_b252_ec_lin);
@@ -106,9 +127,9 @@ fn test_linear_actual365() {
     ];
 
     for result in &results {
-        assert_approx_eq(curve_ac365_simple_linear.zero_rate(result.maturity).annual_rate(), result.zero_rate);
-        assert_approx_eq(curve_ac365_simple_linear.factor(result.maturity), result.factor);
-        assert_approx_eq(curve_ac365_simple_linear.discount(result.maturity), result.discount);
+        assert_approx_eq(curve_ac365_simple_linear.zero_rate(result.maturity).annual_rate(), result.zero_rate, TOL);
+        assert_approx_eq(curve_ac365_simple_linear.factor(result.maturity), result.factor, TOL);
+        assert_approx_eq(curve_ac365_simple_linear.discount(result.maturity), result.discount, TOL);
     }
 
     test_curve_at_curve_date(&curve_ac365_simple_linear);
@@ -131,24 +152,24 @@ fn test_flat_forward_interpolation() {
         vert_y.clone(),
     ).unwrap();
 
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(9)).annual_rate(), 0.05833333333333);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(11)).annual_rate(), 0.1);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(13)).annual_rate(), 0.128846153846152);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(15)).annual_rate(), 0.15);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(19)).annual_rate(), 0.2);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(23)).annual_rate(), 0.19);
-    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(30)).annual_rate(), 0.1789166666666680);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(9)).annual_rate(), 0.05833333333333, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(11)).annual_rate(), 0.1, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(13)).annual_rate(), 0.128846153846152, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(15)).annual_rate(), 0.15, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(19)).annual_rate(), 0.2, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(23)).annual_rate(), 0.19, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(30)).annual_rate(), 0.1789166666666680, TOL);
     assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(16)).annual_rate() > 0.15);
     assert!(curve_ac360_cont_ff.zero_rate(dt_curve.advance_days(17)).annual_rate() < 0.20);
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(15)).annual_rate(), 0.2875);
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(13)).annual_rate(), 0.2875);
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), 0.1425);
-    assert_approx_eq(curve_ac360_cont_ff.factor(dt_curve.advance_days(13)), 1.00466361875533);
-    assert_approx_eq(curve_ac360_cont_ff.forward_factor(dt_curve.advance_days(19), dt_curve.advance_days(23)), 1.00158458746737);
-    assert_approx_eq(curve_ac360_cont_ff.discount(dt_curve.advance_days(20)), 0.9891083592630893);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(15)).annual_rate(), 0.2875, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(11), dt_curve.advance_days(13)).annual_rate(), 0.2875, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), 0.1425, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.factor(dt_curve.advance_days(13)), 1.00466361875533, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.forward_factor(dt_curve.advance_days(19), dt_curve.advance_days(23)), 1.00158458746737, TOL);
+    assert_approx_eq(curve_ac360_cont_ff.discount(dt_curve.advance_days(20)), 0.9891083592630893, TOL);
 
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(51)).annual_rate());
-    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(100)).annual_rate());
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(51)).annual_rate(), TOL);
+    assert_approx_eq(curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(19), dt_curve.advance_days(23)).annual_rate(), curve_ac360_cont_ff.forward_rate(dt_curve.advance_days(50), dt_curve.advance_days(100)).annual_rate(), TOL);
 
     test_curve_at_curve_date(&curve_ac360_cont_ff);
 }
@@ -160,21 +181,25 @@ fn test_curve_at_curve_date(curve: &dyn Curve) {
     assert_approx_eq(
         curve.factor(dt_curve),
         1.0,
+        TOL,
     );
 
     assert_approx_eq(
         curve.forward_factor(dt_curve, dt_curve),
         1.0,
+        TOL,
     );
 
     assert_approx_eq(
         curve.discount(dt_curve),
         1.0,
+        TOL,
     );
 
     assert_approx_eq(
         curve.forward_discount(dt_curve, dt_curve),
         1.0,
+        TOL,
     );
 }
 
@@ -182,27 +207,27 @@ fn test_curve_at_curve_date(curve: &dyn Curve) {
 fn test_thirty360() {
     let dc = DayCount::Thirty360;
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,28).unwrap()).value(), 0.16666666666666666);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,29).unwrap()).value(), 0.16944444444444445);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 3, 1).unwrap()).value(), 0.175);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,28).unwrap()).value(), 4.166666666666667);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,29).unwrap()).value(), 4.169444444444444);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 3, 1).unwrap()).value(), 4.175);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,28).unwrap()).value(), 0.16666666666666666, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,29).unwrap()).value(), 0.16944444444444445, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 3, 1).unwrap()).value(), 0.175, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,28).unwrap()).value(), 4.166666666666667, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,29).unwrap()).value(), 4.169444444444444, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 3, 1).unwrap()).value(), 4.175, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,28).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08333333333333333);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,29).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08055555555555556);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,28).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08333333333333333, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,29).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08055555555555556, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 3, 1).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.075);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 3, 1).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.075, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.25);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.2527777777777778);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.2555555555555555);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.25, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.2527777777777778, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.2555555555555555, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25, TOL);
+    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25, TOL);
 }
