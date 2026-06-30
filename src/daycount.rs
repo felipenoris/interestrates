@@ -50,14 +50,14 @@ impl<'a> DayCount<'a> {
         }
     }
 
-    pub fn year_fraction_given_days(&self, n_days: i32) -> YearFraction {
+    pub fn year_fraction_from_days(&self, n_days: i32) -> YearFraction {
         YearFraction {
             val: (n_days as f64) / (self.days_per_year() as f64)
          }
     }
 
     pub fn year_fraction(&self, start: Date, end: Date) -> YearFraction {
-        self.year_fraction_given_days(self.days(start, end))
+        self.year_fraction_from_days(self.days(start, end))
     }
 }
 

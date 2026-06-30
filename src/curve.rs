@@ -145,7 +145,7 @@ impl<'a> CurvePoints<'a> {
     }
 
     fn vertex_zero_rate(&self, vertex_index: usize) -> Rate {
-        let yf = self.daycount.year_fraction_given_days(self.dtm[vertex_index]);
+        let yf = self.daycount.year_fraction_from_days(self.dtm[vertex_index]);
         Rate::from_annual_rate(self.compounding, self.zero_rates[vertex_index], yf)
     }
 }
@@ -197,7 +197,7 @@ impl<'a> Curve for CurvePoints<'a> {
             },
             CurveMethod::FlatForwardInterpolation => {
                 let x_out = self.days_to_maturity(maturity);
-                let yf_x_out = self.daycount.year_fraction_given_days(x_out);
+                let yf_x_out = self.daycount.year_fraction_from_days(x_out);
                 let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
 
                 let rate_yf_a = self.vertex_zero_rate(index_a);
