@@ -1,7 +1,17 @@
 use bdays::{HolidayCalendar, date::Date};
-use crate::{daycount::DayCount, rate::Compounding};
+use crate::daycount::DayCount;
+use crate::rate::{Compounding, Rate};
 use crate::curve::{Curve, CurvePoints, CurveMethod};
 use crate::assert_approx_eq;
+use std::mem::size_of;
+
+#[test]
+fn print_copy_struct_sizes() {
+    println!("Date = {} bytes", size_of::<Date>());
+    println!("DayCount = {} bytes", size_of::<DayCount>());
+    println!("Compounding = {} bytes", size_of::<Compounding>());
+    println!("Rate = {} bytes", size_of::<Rate>());
+}
 
 #[test]
 fn test_linear_method() {
