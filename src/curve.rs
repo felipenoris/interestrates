@@ -255,8 +255,8 @@ impl<'a> Curve for CurvePoints<'a> {
 }
 
 fn step_function_interpolation(
-        x: &Vec<i32>,
-        y: &Vec<f64>,
+        x: &[i32],
+        y: &[f64],
         x_out: i32,
     ) -> f64 {
 
@@ -325,7 +325,7 @@ fn linear_interpolation(
 /// x should be sorted and should contain at least 2 distinct points,
 /// or this function will panic.
 fn interpolation_points(
-    x: &Vec<i32>,
+    x: &[i32],
     x_out: i32,
 ) -> (usize, usize) {
 
