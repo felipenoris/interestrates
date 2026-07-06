@@ -1,7 +1,7 @@
 use bdays::{HolidayCalendar, date::Date};
 use crate::daycount::{DayCount, YearFraction};
 use crate::rate::{Compounding, Rate};
-use crate::curve::{Curve, CurvePoints, CurveMethod};
+use crate::curve::{Curve, CurvePoints, CurveMethod, InterpolationMethod, ParametricMethod};
 use crate::assert_approx_eq;
 use std::mem::size_of;
 
@@ -29,7 +29,11 @@ fn test_linear_method() {
         dt_curve,
         DayCount::BDays252(&cal),
         Compounding::Exponential,
-        CurveMethod::LinearInterpolation,
+        CurveMethod::Interpolation{
+            before_first: InterpolationMethod::LinearInterpolation,
+            inner: InterpolationMethod::LinearInterpolation,
+            after_last: InterpolationMethod::LinearInterpolation,
+        },
         vert_x.clone(),
         vert_y.clone(),
     ).unwrap();
@@ -112,7 +116,11 @@ fn test_linear_actual365() {
         dt_curve,
         DayCount::Actual365,
         Compounding::Simple,
-        CurveMethod::LinearInterpolation,
+        CurveMethod::Interpolation{
+            before_first: InterpolationMethod::LinearInterpolation,
+            inner: InterpolationMethod::LinearInterpolation,
+            after_last: InterpolationMethod::LinearInterpolation,
+        },
         vert_x.clone(),
         vert_y.clone(),
     ).unwrap();
@@ -147,7 +155,11 @@ fn test_flat_forward_interpolation() {
         dt_curve,
         DayCount::Actual360,
         Compounding::Continuous,
-        CurveMethod::FlatForwardInterpolation,
+        CurveMethod::Interpolation{
+            before_first: InterpolationMethod::FlatForwardInterpolation,
+            inner: InterpolationMethod::FlatForwardInterpolation,
+            after_last: InterpolationMethod::FlatForwardInterpolation,
+        },
         vert_x.clone(),
         vert_y.clone(),
     ).unwrap();
@@ -230,4 +242,69 @@ fn test_thirty360() {
     assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222, TOL);
     assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25, TOL);
     assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25, TOL);
+}
+
+#[test]
+fn test_bdays_step_spline_interpolation() {
+
+    let cal = bdays::calendars::brazil::BRSettlement;
+
+    let vert_x = vec![11, 15, 19, 23, 25];
+    let vert_y = vec![0.10, 0.12, 0.20, 0.22, 0.2];
+
+    let dt_curve = Date::from_ymd(2015,08,03).unwrap();
+
+    let curve = CurvePoints::new(
+        dt_curve,
+        DayCount::BDays252(&cal),
+        Compounding::Continuous,
+        CurveMethod::Interpolation{
+            before_first: InterpolationMethod::StepFunction,
+            inner: InterpolationMethod::CubicSplineOnRates,
+            after_last: InterpolationMethod::CubicSplineOnRates,
+        },
+        vert_x.clone(),
+        vert_y.clone(),
+    ).unwrap();
+
+    assert_approx_eq( curve.zero_rate( Date::from_ymd(2015, 8, 10).unwrap() ).annual_rate(), vert_y[0], 1.0e-8 ); // 5DU
+    assert_approx_eq( curve.zero_rate( Date::from_ymd(2015, 8, 20).unwrap() ).annual_rate(), 0.10286585, 1.0e-8 ); // 13DU
+}
+
+#[test]
+fn test_nelson_siegel() {
+    let dt_curve = Date::from_ymd(2015, 08, 11).unwrap();
+
+    let curve_ns = CurvePoints::new_parametric(
+        dt_curve,
+        DayCount::Actual360,
+        Compounding::Continuous,
+        CurveMethod::Parametric(ParametricMethod::NelsonSiegel),
+        vec![0.1, 0.2, 0.3, 0.5],
+    ).unwrap();
+
+    assert_approx_eq( curve_ns.zero_rate(Date::from_ymd(2015,8,12).unwrap()).annual_rate(), 0.300069315921728, TOL );
+    assert_approx_eq( curve_ns.zero_rate(Date::from_ymd(2016,8,12).unwrap()).annual_rate(), 0.311522078457982, TOL );
+
+    assert_approx_eq( curve_ns.discount(Date::from_ymd(2015,8,12).unwrap()), 0.999166821408637, TOL );
+    assert_approx_eq( curve_ns.discount(Date::from_ymd(2016,8,12).unwrap()), 0.727908844513432, TOL );
+}
+
+#[test]
+fn test_svensson() {
+    let dt_curve = Date::from_ymd(2015, 08, 11).unwrap();
+
+    let curve_ns = CurvePoints::new_parametric(
+        dt_curve,
+        DayCount::Actual360,
+        Compounding::Continuous,
+        CurveMethod::Parametric(ParametricMethod::Svensson),
+        vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.8],
+    ).unwrap();
+
+    assert_approx_eq( curve_ns.zero_rate(Date::from_ymd(2015,8,12).unwrap()).annual_rate(), 0.300513102478340, TOL );
+    assert_approx_eq( curve_ns.zero_rate(Date::from_ymd(2016,8,12).unwrap()).annual_rate(), 0.408050168725566, TOL );
+
+    assert_approx_eq( curve_ns.discount(Date::from_ymd(2015,8,12).unwrap()), 0.999165589696054, TOL );
+    assert_approx_eq( curve_ns.discount(Date::from_ymd(2016,8,12).unwrap()), 0.659690510410030, TOL );
 }

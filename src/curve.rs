@@ -1,9 +1,8 @@
 use bdays::date::Date;
-use crate::curve::CurveMethod::{CubicSplineOnRates, FlatForwardInterpolation, LinearInterpolation, StepFunction};
 use crate::daycount::YearFraction;
 use crate::rate::{Compounding, Rate};
 use crate::daycount::DayCount::{self, BDays252};
-use crate::spline::{spline_fit, spline_int};
+use crate::spline::Spline;
 
 use std::error;
 use std::fmt;
@@ -36,27 +35,78 @@ impl fmt::Display for Error {
 impl error::Error for Error {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CurveMethod {
+pub enum InterpolationMethod {
     FlatForwardInterpolation,
     LinearInterpolation,
     StepFunction,
     CubicSplineOnRates,
+    //CubicSplineOnDiscountFactors,
+}
+
+impl InterpolationMethod {
+
+    fn is_cubic_spline_on_rates(&self) -> bool {
+        match self {
+            InterpolationMethod::CubicSplineOnRates => true,
+            _ => false,
+        }
+    }
+
+    //fn is_cubic_spline_on_discount_factors(&self) -> bool {
+    //    match self {
+    //        InterpolationMethod::CubicSplineOnDiscountFactors => true,
+    //        _ => false,
+    //    }
+    //}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ParametricMethod {
+    NelsonSiegel,
+    Svensson,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CurveMethod {
+    Interpolation{
+        before_first: InterpolationMethod,
+        inner: InterpolationMethod,
+        after_last: InterpolationMethod,
+    },
+
+    Parametric(ParametricMethod),
 }
 
 impl CurveMethod {
 
     fn is_interpolation_method(&self) -> bool {
         match self {
-            FlatForwardInterpolation | LinearInterpolation | StepFunction | CubicSplineOnRates => true,
+            CurveMethod::Parametric(_) => false,
+            CurveMethod::Interpolation{ .. } => true,
         }
     }
 
     fn needs_spline_on_rates(&self) -> bool {
         match self {
-            CubicSplineOnRates => true,
-            _ => false,
+            CurveMethod::Parametric(_) => false,
+            CurveMethod::Interpolation { before_first, inner, after_last } => {
+                before_first.is_cubic_spline_on_rates()
+                || inner.is_cubic_spline_on_rates()
+                || after_last.is_cubic_spline_on_rates()
+            }
         }
     }
+
+    //fn needs_spline_on_discount_factors(&self) -> bool {
+    //    match self {
+    //        CurveMethod::Parametric(_) => false,
+    //        CurveMethod::Interpolation { before_first, inner, after_last } => {
+    //            before_first.is_cubic_spline_on_discount_factors()
+    //            || inner.is_cubic_spline_on_discount_factors()
+    //            || after_last.is_cubic_spline_on_discount_factors()
+    //        }
+    //    }
+    //}
 }
 
 pub trait Curve {
@@ -105,7 +155,9 @@ pub struct CurvePoints<'a> {
     method: CurveMethod,
     dtm: Vec<i32>,
     zero_rates: Vec<f64>,
-    spline_params_opt: Option<Vec<f64>>,
+    spline_fit_on_rates: Option<Spline>,
+    //spline_fit_on_discount_factors: Option<Spline>,
+    parametric_params: Option<Vec<f64>>,
 }
 
 impl<'a> CurvePoints<'a> {
@@ -134,15 +186,58 @@ impl<'a> CurvePoints<'a> {
             return Err(Error::BadSize{dtm, zero_rates});
         }
 
-        let spline_params_opt = {
+        let spline_fit_on_rates = {
             if method.needs_spline_on_rates() {
-                Option::Some(spline_fit(&dtm, &zero_rates))
+                Option::Some(Spline::spline_fit(dtm.clone(), zero_rates.clone()))
             } else {
                 Option::None
             }
         };
 
-        Ok(CurvePoints { asof, daycount, compounding, method, dtm, zero_rates, spline_params_opt })
+        //let spline_fit_on_discount_factors = {
+        //    if method.needs_spline_on_discount_factors() {
+        //        Option::Some(Spline::spline_fit(dtm.clone(), zero_rates.clone()))
+        //    } else {
+        //        Option::None
+        //    }
+        //}
+
+        Ok(CurvePoints {
+            asof,
+            daycount,
+            compounding,
+            method,
+            dtm,
+            zero_rates,
+            spline_fit_on_rates,
+            parametric_params: Option::None,
+        })
+    }
+
+    pub fn new_parametric(
+        asof: Date,
+        daycount: DayCount<'a>,
+        compounding: Compounding,
+        method: CurveMethod,
+        parameters: Vec<f64>,
+    ) -> Result<Self, Error> {
+
+        if let BDays252(cal) = daycount {
+            if !cal.is_bday(asof) {
+                return Err(Error::InvalidCurveDate{asof});
+            }
+        }
+
+        Ok(CurvePoints {
+            asof,
+            daycount,
+            compounding,
+            method,
+            dtm: Vec::<i32>::new(),
+            zero_rates: Vec::<f64>::new(),
+            spline_fit_on_rates: Option::None,
+            parametric_params: Option::Some(parameters),
+        })
     }
 
     /// panics if maturity occurs before asof date
@@ -168,6 +263,75 @@ impl<'a> CurvePoints<'a> {
     }
 }
 
+fn zero_rate_interpolation<'a>(
+        interp_method: InterpolationMethod,
+        curve: & 'a CurvePoints,
+        maturity: Date,
+    ) -> Rate {
+
+    match interp_method {
+        InterpolationMethod::LinearInterpolation => {
+            let x_out = curve.days_to_maturity(maturity);
+            let (index_a, index_b) = interpolation_points(&curve.dtm, x_out);
+
+            Rate::from_annual_rate(
+                curve.compounding,
+                linear_interpolation(
+                    curve.dtm[index_a] as f64,
+                    curve.zero_rates[index_a],
+                    curve.dtm[index_b] as f64,
+                    curve.zero_rates[index_b],
+                    x_out as f64,
+                ),
+                curve.year_fraction(maturity),
+            )
+        },
+        InterpolationMethod::StepFunction => {
+            Rate::from_annual_rate(
+                curve.compounding,
+                step_function_interpolation(
+                    &curve.dtm,
+                    &curve.zero_rates,
+                    curve.days_to_maturity(maturity),
+                ),
+                curve.year_fraction(maturity),
+            )
+        },
+        InterpolationMethod::FlatForwardInterpolation => {
+            let x_out = curve.days_to_maturity(maturity);
+            let yf_x_out = curve.daycount.year_fraction_from_days(x_out);
+            let (index_a, index_b) = interpolation_points(&curve.dtm, x_out);
+
+            let rate_yf_a = curve.vertex_zero_rate(index_a);
+            let rate_yf_b = curve.vertex_zero_rate(index_b);
+
+            let ln_px = linear_interpolation(
+                rate_yf_a.year_fraction().value(),
+                rate_yf_a.discount().ln(),
+                rate_yf_b.year_fraction().value(),
+                rate_yf_b.discount().ln(),
+                yf_x_out.value(),
+            );
+
+            Rate::from_discount(
+                curve.compounding,
+                ln_px.exp(),
+                yf_x_out,
+            )
+        },
+        InterpolationMethod::CubicSplineOnRates => {
+            let x_out = curve.days_to_maturity(maturity);
+            let yf_x_out = curve.daycount.year_fraction_from_days(x_out);
+
+            Rate::from_annual_rate(
+                curve.compounding,
+                curve.spline_fit_on_rates.as_ref().unwrap().spline_int(x_out),
+                yf_x_out,
+            )
+        }
+    }
+}
+
 impl<'a> Curve for CurvePoints<'a> {
 
     fn asof(&self) -> Date {
@@ -186,69 +350,36 @@ impl<'a> Curve for CurvePoints<'a> {
         }
 
         match self.method {
-            CurveMethod::LinearInterpolation => {
+            CurveMethod::Interpolation{before_first, inner, after_last} => {
                 let x_out = self.days_to_maturity(maturity);
-                let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
-
-                Rate::from_annual_rate(
-                    self.compounding,
-                    linear_interpolation(
-                        self.dtm[index_a] as f64,
-                        self.zero_rates[index_a],
-                        self.dtm[index_b] as f64,
-                        self.zero_rates[index_b],
-                        x_out as f64,
-                    ),
-                    self.year_fraction(maturity),
-                )
+                if x_out < *self.dtm.first().unwrap() {
+                    zero_rate_interpolation(before_first, self, maturity)
+                } else if x_out > *self.dtm.last().unwrap() {
+                    zero_rate_interpolation(after_last, self, maturity)
+                } else {
+                    zero_rate_interpolation(inner, self, maturity)
+                }
             },
-            CurveMethod::StepFunction => {
-                Rate::from_annual_rate(
-                    self.compounding,
-                    step_function_interpolation(
-                        &self.dtm,
-                        &self.zero_rates,
-                        self.days_to_maturity(maturity),
-                    ),
-                    self.year_fraction(maturity),
-                )
-            },
-            CurveMethod::FlatForwardInterpolation => {
-                let x_out = self.days_to_maturity(maturity);
-                let yf_x_out = self.daycount.year_fraction_from_days(x_out);
-                let (index_a, index_b) = interpolation_points(&self.dtm, x_out);
+            CurveMethod::Parametric(parametric_method) => {
 
-                let rate_yf_a = self.vertex_zero_rate(index_a);
-                let rate_yf_b = self.vertex_zero_rate(index_b);
+                let yf_maturity = self.year_fraction(maturity);
 
-                let ln_px = linear_interpolation(
-                    rate_yf_a.year_fraction().value(),
-                    rate_yf_a.discount().ln(),
-                    rate_yf_b.year_fraction().value(),
-                    rate_yf_b.discount().ln(),
-                    yf_x_out.value(),
-                );
-
-                Rate::from_discount(
-                    self.compounding,
-                    ln_px.exp(),
-                    yf_x_out,
-                )
-            },
-            CurveMethod::CubicSplineOnRates => {
-                let x_out = self.days_to_maturity(maturity);
-                let yf_x_out = self.daycount.year_fraction_from_days(x_out);
-
-                Rate::from_annual_rate(
-                    self.compounding,
-                    spline_int(
-                        &self.dtm,
-                        &self.zero_rates,
-                        self.spline_params_opt.as_ref().unwrap(),
-                        x_out,
-                    ),
-                    yf_x_out,
-                )
+                match parametric_method {
+                    ParametricMethod::NelsonSiegel => {
+                        nelson_siegel(
+                            self.parametric_params.as_ref().unwrap(),
+                            self.compounding,
+                            yf_maturity,
+                        )
+                    },
+                    ParametricMethod::Svensson => {
+                        svensson(
+                            self.parametric_params.as_ref().unwrap(),
+                            self.compounding,
+                            yf_maturity,
+                        )
+                    },
+                }
             }
         }
     }
@@ -359,4 +490,55 @@ fn interpolation_points(
     assert!(x[index_a] < x[index_b]);
 
     (index_a, index_b)
+}
+
+fn nelson_siegel(
+    params: &Vec<f64>,
+    compounding: Compounding,
+    yf_maturity: YearFraction,
+) -> Rate {
+
+    // beta1 = param[0]
+    // beta2 = param[1]
+    // beta3 = param[2]
+    // lambda = param[3]
+
+    let t = yf_maturity.value();
+    let _exp_lambda_t_ = (-params[3]*t).exp();
+    let F_beta2 = (1.0 - _exp_lambda_t_) / (params[3]*t);
+
+    let annual_rate = params[0] + params[1]*F_beta2 + params[2]*(F_beta2 - _exp_lambda_t_);
+
+    Rate::from_annual_rate(
+        compounding,
+        annual_rate,
+        yf_maturity,
+    )
+}
+
+fn svensson(
+    params: &Vec<f64>,
+    compounding: Compounding,
+    yf_maturity: YearFraction,
+) -> Rate {
+    // beta1 = param[0]
+    // beta2 = param[1]
+    // beta3 = param[2]
+    // beta4 = param[3]
+    // lambda1 = param[4]
+    // lambda2 = param[5]
+
+    let t = yf_maturity.value();
+    let _exp_lambda1_t_ = (-params[4]*t).exp();
+    let _exp_lambda2_t_ = (-params[5]*t).exp();
+    let F_beta2 = (1.0 - _exp_lambda1_t_) / (params[4]*t);
+
+    let annual_rate = params[0] + params[1]*F_beta2 + params[2]*(F_beta2 - _exp_lambda1_t_) +
+            params[3]*( (1.0 - _exp_lambda2_t_)/(params[5]*t) - _exp_lambda2_t_);
+
+    Rate::from_annual_rate(
+        compounding,
+        annual_rate,
+        yf_maturity,
+    )   
 }

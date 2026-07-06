@@ -2,7 +2,38 @@
 #[cfg(test)]
 use crate::assert_approx_eq;
 
-pub fn spline_fit(
+#[derive(Clone)]
+pub struct Spline {
+    x: Vec<i32>,
+    y: Vec<f64>,
+    params: Vec<f64>,
+}
+
+impl Spline {
+
+    pub fn spline_fit(
+        x: Vec<i32>,
+        y: Vec<f64>,
+    ) -> Self {
+
+        let params = spline_fit(&x, &y);
+
+        Spline {
+            x,
+            y,
+            params,
+        }
+    }
+
+    pub fn spline_int(
+        &self,
+        x_out: i32,
+    ) -> f64 {
+        spline_int(&self.x, &self.y, &self.params, x_out)
+    }
+}
+
+fn spline_fit(
     x: &[i32],
     y: &[f64],
 ) -> Vec<f64> {
@@ -50,7 +81,7 @@ pub fn spline_fit(
     params
 }
 
-pub fn spline_int(
+fn spline_int(
     x: &[i32],
     y: &[f64],
     params: &[f64],
