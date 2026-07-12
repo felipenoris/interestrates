@@ -4,6 +4,7 @@ use crate::rate::{Compounding, Rate};
 use crate::curve::{Curve, CurvePoints, CurveMethod, InterpolationMethod, ParametricMethod};
 use crate::assert_approx_eq;
 use std::mem::size_of;
+use std::rc::Rc;
 
 #[test]
 fn print_copy_struct_sizes() {
@@ -23,11 +24,11 @@ fn test_linear_method() {
 
     let dt_curve = Date::from_ymd(2015, 8, 3).unwrap();
 
-    let cal = bdays::calendars::brazil::BRSettlement;
+    let cal = Rc::new(bdays::calendars::brazil::BRSettlement);
 
-    let curve_b252_ec_lin = CurvePoints::new(
+    let curve_b252_ec_lin = CurvePoints::from_points(
         dt_curve,
-        DayCount::BDays252(&cal),
+        DayCount::BDays252(cal.clone()),
         Compounding::Exponential,
         CurveMethod::Interpolation{
             before_first: InterpolationMethod::LinearInterpolation,
@@ -112,7 +113,7 @@ fn test_linear_actual365() {
     let vert_x = vec![11, 15, 19, 23];
     let vert_y = vec![0.10, 0.15, 0.20, 0.19];
 
-    let curve_ac365_simple_linear = CurvePoints::new(
+    let curve_ac365_simple_linear = CurvePoints::from_points(
         dt_curve,
         DayCount::Actual365,
         Compounding::Simple,
@@ -151,7 +152,7 @@ fn test_flat_forward_interpolation() {
 
     let dt_curve = Date::from_ymd(2015,08,03).unwrap();
 
-    let curve_ac360_cont_ff = CurvePoints::new(
+    let curve_ac360_cont_ff = CurvePoints::from_points(
         dt_curve,
         DayCount::Actual360,
         Compounding::Continuous,
@@ -219,44 +220,44 @@ fn test_curve_at_curve_date(curve: &dyn Curve) {
 fn test_thirty360() {
     let dc = DayCount::Thirty360;
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,28).unwrap()).value(), 0.16666666666666666, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,29).unwrap()).value(), 0.16944444444444445, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 3, 1).unwrap()).value(), 0.175, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,28).unwrap()).value(), 4.166666666666667, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,29).unwrap()).value(), 4.169444444444444, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 3, 1).unwrap()).value(), 4.175, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,28).unwrap()).yf(), 0.16666666666666666, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 2,29).unwrap()).yf(), 0.16944444444444445, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2012, 3, 1).unwrap()).yf(), 0.175, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,28).unwrap()).yf(), 4.166666666666667, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 2,29).unwrap()).yf(), 4.169444444444444, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2011,12,28).unwrap(), Date::from_ymd(2016, 3, 1).unwrap()).yf(), 4.175, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,28).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08333333333333333, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 2,29).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.08055555555555556, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 2,28).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).yf(), 0.08333333333333333, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 2,29).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).yf(), 0.08055555555555556, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 3, 1).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).value(), 0.075, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 3, 1).unwrap(), Date::from_ymd(2012, 3,28).unwrap()).yf(), 0.075, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.25, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.2527777777777778, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.2555555555555555, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).yf(), 1.25, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).yf(), 1.2527777777777778, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,29).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).yf(), 1.2555555555555555, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).yf(), 1.2472222222222222, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).yf(), 1.25, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,30).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).yf(), 1.25, TOL);
 
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).value(), 1.2472222222222222, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).value(), 1.25, TOL);
-    assert_approx_eq( dc.year_fraction(Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).value(), 1.25, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,29).unwrap()).yf(), 1.2472222222222222, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,30).unwrap()).yf(), 1.25, TOL);
+    assert_approx_eq( YearFraction::from_dates(dc.clone(), Date::from_ymd(2012, 5,31).unwrap(), Date::from_ymd(2013, 8,31).unwrap()).yf(), 1.25, TOL);
 }
 
 #[test]
 fn test_bdays_step_spline_interpolation() {
 
-    let cal = bdays::calendars::brazil::BRSettlement;
+    let cal = Rc::new(bdays::calendars::brazil::BRSettlement);
 
     let vert_x = vec![11, 15, 19, 23, 25];
     let vert_y = vec![0.10, 0.12, 0.20, 0.22, 0.2];
 
     let dt_curve = Date::from_ymd(2015,08,03).unwrap();
 
-    let curve = CurvePoints::new(
+    let curve = CurvePoints::from_points(
         dt_curve,
-        DayCount::BDays252(&cal),
+        DayCount::BDays252(cal.clone()),
         Compounding::Continuous,
         CurveMethod::Interpolation{
             before_first: InterpolationMethod::StepFunction,
@@ -275,7 +276,7 @@ fn test_bdays_step_spline_interpolation() {
 fn test_nelson_siegel() {
     let dt_curve = Date::from_ymd(2015, 08, 11).unwrap();
 
-    let curve_ns = CurvePoints::new_parametric(
+    let curve_ns = CurvePoints::from_parameters(
         dt_curve,
         DayCount::Actual360,
         Compounding::Continuous,
@@ -294,7 +295,7 @@ fn test_nelson_siegel() {
 fn test_svensson() {
     let dt_curve = Date::from_ymd(2015, 08, 11).unwrap();
 
-    let curve_ns = CurvePoints::new_parametric(
+    let curve_ns = CurvePoints::from_parameters(
         dt_curve,
         DayCount::Actual360,
         Compounding::Continuous,

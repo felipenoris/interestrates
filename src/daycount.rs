@@ -1,31 +1,93 @@
 use bdays::date::Date;
 use bdays::HolidayCalendar;
+use std::rc::Rc;
+use std::fmt;
+use std::ops::Sub;
 
-#[derive(Clone, Copy)]
-pub enum DayCount<'a> {
+#[derive(Clone)]
+pub enum DayCount {
     Actual360,
     Actual365,
     Thirty360,
-    BDays252(& 'a dyn HolidayCalendar),
+    BDays252(Rc<dyn HolidayCalendar>),
 }
 
-#[derive(Debug, Clone, Copy)]
+impl fmt::Debug for DayCount {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                DayCount::Actual360 => "Actual360",
+                DayCount::Actual365 => "Actual365",
+                DayCount::Thirty360 => "Thirty360",
+                DayCount::BDays252(_) => "BDays252",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct YearFraction {
-    val: f64
+    daycount: DayCount,
+    dtm: i32,
+    yf: f64,
 }
 
 impl YearFraction {
 
-    pub fn from_value(val: f64) -> Self {
-        YearFraction{val}
+    pub fn from_days(
+        daycount: DayCount,
+        dtm: i32,
+    ) -> Self {
+
+        let yf = (dtm as f64) / daycount.days_per_year() as f64;
+
+        YearFraction {
+            daycount,
+            dtm,
+            yf,
+        }
     }
 
-    pub fn value(&self) -> f64 {
-        self.val
+    pub fn from_dates(
+        daycount: DayCount,
+        start: Date,
+        end: Date,
+    ) -> Self {
+        let dtm = daycount.days(start, end);
+        Self::from_days(daycount, dtm)
+    }
+
+    /// days to maturity
+    pub fn dtm(&self) -> i32 {
+        self.dtm
+    }
+
+    /// year fraction value
+    pub fn yf(&self) -> f64 {
+        self.yf
+    }
+
+    pub fn daycount(&self) -> &DayCount {
+        &self.daycount
     }
 }
 
-impl<'a> DayCount<'a> {
+impl<'a, 'b> Sub<&'b YearFraction> for &'a YearFraction {
+    type Output = YearFraction;
+
+    /// safety: propagates lhd daycount
+    fn sub(self, rhs: &'b YearFraction) -> YearFraction {
+        YearFraction::from_days(
+            self.daycount().clone(),
+            self.dtm() - rhs.dtm(),
+        )
+    }
+}
+
+impl DayCount {
 
     pub fn days(&self, start: Date, end: Date) -> i32 {
         match self {
@@ -48,16 +110,6 @@ impl<'a> DayCount<'a> {
             DayCount::BDays252(cal) => cal.advance_bdays(start, count),
             _ => start.advance_days(count),
         }
-    }
-
-    pub fn year_fraction_from_days(&self, n_days: i32) -> YearFraction {
-        YearFraction {
-            val: (n_days as f64) / (self.days_per_year() as f64)
-         }
-    }
-
-    pub fn year_fraction(&self, start: Date, end: Date) -> YearFraction {
-        self.year_fraction_from_days(self.days(start, end))
     }
 }
 

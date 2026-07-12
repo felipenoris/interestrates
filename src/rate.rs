@@ -7,7 +7,7 @@ pub enum Compounding {
     Exponential,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Rate {
     compounding: Compounding,
     annual_rate: f64, // annual interest rate, 0.123 means 12.30%
@@ -46,7 +46,7 @@ impl Rate {
         year_fraction: YearFraction,
     ) -> Self {
 
-        let t = year_fraction.value();
+        let t = year_fraction.yf();
 
         let r = match compounding {
                 Compounding::Continuous => factor.ln() / t,
@@ -82,12 +82,12 @@ impl Rate {
     }
 
     pub fn factor(&self) -> f64 {
-        if self.year_fraction.value() == 0.0 || self.annual_rate == 0.0 {
+        if self.year_fraction.yf() == 0.0 || self.annual_rate == 0.0 {
             1.0
         } else {
 
             let r = self.annual_rate;
-            let t = self.year_fraction.value();
+            let t = self.year_fraction.yf();
 
             match self.compounding {
                 Compounding::Continuous => (r * t).exp(),
@@ -101,8 +101,8 @@ impl Rate {
         1.0 / self.factor()
     }
 
-    pub fn year_fraction(&self) -> YearFraction {
-        self.year_fraction
+    pub fn year_fraction(&self) -> &YearFraction {
+        &self.year_fraction
     }
 
     pub fn compounding(&self) -> Compounding {
